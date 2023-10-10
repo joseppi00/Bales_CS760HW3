@@ -1,0 +1,259 @@
+---
+title: "HW3 Code"
+author: "Joe Bales"
+format:
+  html:
+    toc: true
+    self-contained: true
+---
+
+```{r}
+#| warning: false
+#| echo: false
+#Loading in packages
+library(tidyverse)
+```
+
+```{r}
+#| warning: false
+#| echo: false
+#Test set read-in
+dir = "C:/Users/Joe Bales/Desktop/Academics/1 Fall 2023/CS760/Homework 3/hw3Data"
+D2z = read_table(paste(dir,"D2z.txt",sep="/"), col_names = FALSE)
+colnames(D2z) = c(colnames(D2z)[1:(length(colnames(D2z))-1)], "Y")
+#View(D2z)
+```
+## Implementation 1
+Euclidean Distance Function
+```{r}
+Euc_dist = function(x,y){
+  if (length(x)!=length(y)){print("Lengths of arguments differ!"); return()}
+  else{return( sqrt( sum((x-y)**2) ) )}
+}
+```
+
+
+```{r}
+#Here this takes the number of NN to return, the data, 
+#and the new observation whose class you want to predict
+WhichNNs = function(k = 1, df, x_pr){
+  Euc_dist_pr = function(x){ return(Euc_dist(x, x_pr)) }
+  df[((df %>% select(-Y) %>% apply(MARGIN=1, FUN=Euc_dist_pr) %>% order())[1:k]),] %>%
+    return()
+}
+```
+
+```{r}
+kNN_pred = function(k = 1, df, x_pr){
+  Ycounts = WhichNNs(k, df, x_pr) %>% select(Y) %>% table()
+  return( (Ycounts%>%names())[Ycounts%>%which.max()] %>% as.numeric() )
+}
+```
+
+```{r}
+GetCoord_df = function(coordvec){
+  l = length(coordvec)
+  RT = function(b){return(data.frame(R = rep(b,l), C = coordvec))}
+  coord_df = RT(coordvec[1])
+  for (i in 2:l){
+    coord_df = rbind(coord_df, RT(coordvec[i]))
+  }
+  return(coord_df)
+}
+
+producePlots1a = function(k = 1, df = D2z){
+  coordvec = c(-20:20)/10
+  coords = GetCoord_df(coordvec)
+  kNN_pred_1a = function(x){
+    return(kNN_pred(k, df, x))
+  }
+  vals = apply(coords, MARGIN = 1, FUN = kNN_pred_1a)
+  Canvas = data.frame(X1 = coords$R, X2 = coords$C, Y = vals%>%factor())
+  plot(x = Canvas$X1, y = Canvas$X2, col = c("Orange","Green")[Canvas$Y], cex = 0.5,
+       xlab = "X1", ylab = "X2", 
+       main = "1NN decision boundary for D2z data set")
+  points(x = D2z$X1, y = D2z$X2)
+}
+```
+
+## Implementation 2
+```{r}
+#| warning: false
+#| echo: false
+emails = read_csv(paste(dir,"emails.csv",sep="/"))
+emails$Y = emails$Prediction
+emails$Prediction = NULL
+emails = emails[,-1]
+#View(emails)
+```
+
+```{r}
+kNN_pred_emails = function(j){
+  id = ((1000*(j-1) + 1):(1000*j))
+  id_tr = !(c(1:5000)%in%id)
+  kNN_pred_one_email = function(x){
+    kNN_pred(k = 1, df = emails[id_tr,], x_pr = x)%>%return()
+    }
+  emails[id, -which(colnames(emails)=="Y")] %>%
+    apply(MARGIN = 1, FUN = kNN_pred_one_email) %>% return() 
+}
+```
+
+Here's I've put "eval: false" since it took nearly an hour to run on my computer. I then saved exported the result to a csv, and present it in the next code chunk.
+```{r}
+#| eval: false
+CV_mses = apply(matrix(c(1:5),ncol=1), MARGIN=1, FUN = getMSE)
+```
+
+```{r}
+#| eval: false
+mean(CV_mses)
+```
+```{r}
+#| eval: false
+knnemails = data.frame(Fold1 = numeric(1000),
+                       Fold2 = numeric(1000),
+                       Fold3 = numeric(1000),
+                       Fold4 = numeric(1000),
+                       Fold5 = numeric(1000))
+
+for (j in 1:5){
+  knnemails[,j] = kNN_pred_emails(j)
+}
+```
+
+```{r}
+knnemails = read.csv(paste(dir,"knnemails.csv",sep="/"))[,-1]
+#View(knnemails)
+```
+
+
+```{r}
+knnaccuracy = function(x, j=1){
+  return(mean((1-(abs(x-emails$Y[c(1:1000)+(j-1)*1000])))))
+}
+
+accuracies = numeric(5)
+for (j in 1:5){
+  accuracies[j] = knnaccuracy(knnemails[,j], j)
+}
+mean(accuracies)
+```
+
+```{r}
+knnrecall = function(x, j=1){
+  df = emails[c(1:1000)+(j-1)*1000,]
+  jp = which(df$Y==1)
+  jpknn = which(x==1)
+  return(sum(jpknn%in%jp)/length(jp))
+}
+
+recalls = numeric(5)
+for (j in 1:5){
+  recalls[j] = knnrecall(knnemails[,j], j)
+}
+mean(recalls)
+```
+
+```{r}
+knnprecision = function(x, j=1){
+  df = emails[c(1:1000)+(j-1)*1000,]
+  jp = which(df$Y==1)
+  jpknn = which(x==1)
+  return(sum(jpknn%in%jp)/length(jpknn))
+}
+
+precisions = numeric(5)
+for (j in 1:5){
+  precisions[j] = knnprecision(knnemails[,j], j)
+}
+mean(precisions)
+```
+
+## Implementation 4
+
+```{r}
+kNN_pred_emails4 = function(k, j){
+  id = ((1000*(j-1) + 1):(1000*j))
+  id_tr = !(c(1:5000)%in%id)
+  kNN_pred_one_email = function(x){
+    kNN_pred(k, df = emails[id_tr,], x_pr = x)%>%return()
+    }
+  emails[id, -which(colnames(emails)=="Y")] %>%
+    apply(MARGIN = 1, FUN = kNN_pred_one_email) %>% return() 
+}
+```
+
+```{r}
+#| eval: false
+knnemails3 = data.frame(Fold1 = numeric(1000),
+                       Fold2 = numeric(1000),
+                       Fold3 = numeric(1000),
+                       Fold4 = numeric(1000),
+                       Fold5 = numeric(1000))
+knnemails5 = data.frame(Fold1 = numeric(1000),
+                       Fold2 = numeric(1000),
+                       Fold3 = numeric(1000),
+                       Fold4 = numeric(1000),
+                       Fold5 = numeric(1000))
+knnemails7 = data.frame(Fold1 = numeric(1000),
+                       Fold2 = numeric(1000),
+                       Fold3 = numeric(1000),
+                       Fold4 = numeric(1000),
+                       Fold5 = numeric(1000))
+knnemails10 = data.frame(Fold1 = numeric(1000),
+                       Fold2 = numeric(1000),
+                       Fold3 = numeric(1000),
+                       Fold4 = numeric(1000),
+                       Fold5 = numeric(1000))
+knnlist = list(knnemails3,knnemails5,knnemails7,knnemails10)
+toname = c("knnemails3.csv","knnemails5.csv","knnemails7.csv","knnemails10.csv")
+for (k in 1:4){
+  
+  for (j in 1:5){
+    K = c(3,5,7,10)[k]
+    knnlist[[k]][,j] = kNN_pred_emails4(K, j)
+  }
+  
+  write.csv(knnlist[[k]], paste(dir,toname[k],sep="/"))
+}
+```
+
+## Roc curve from non-programming part 5(a)
+```{r}
+fp = c(0, 0.25, 0.5, 1)
+tp = c(1/3, 2/3, 1, 1)
+plot(x= fp, y = tp, type = "l", col = "red", main = "Roc Curve Part 5(a)", xlab = "False Positive Rate", ylab = "True Positive Rate")
+```
+
+
+## Implementation 3
+```{r}
+gradi = function(theta, X, y){
+  return( t(X)%*%((exp(X%*%theta)/(exp(X%*%theta)+1))-y) )
+}
+
+GD = function(epochs = 5, theta_init, X, y, alpha = 0.1){
+  theta = theta_init
+  for (i in 1:epochs){
+    theta = theta - alpha*gradi(theta, X, y)
+  }
+  return(theta)
+}
+```
+
+```{r}
+#| results: hide
+#test!
+emails_X = emails[,-which(colnames(emails)=="Y")]%>%data.frame()%>%data.matrix()
+emails_Y = emails$Y
+th0 = numeric(3000)
+th0 - 0.1*gradi(th0, emails_X, emails_Y)
+#it works the first iteration
+```
+
+```{r}
+FirstRun = GD(epochs = 5, theta_init = th0, X = emails_X, y = emails_Y, alpha = 0.1)
+summary(FirstRun)
+```
+
